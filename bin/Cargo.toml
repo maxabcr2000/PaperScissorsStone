@@ -1,0 +1,10 @@
+[package]
+name = "bin"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+atb = { git = "https://github.com/aetheras-io/atb-rs", tag = "v0.12.6", features = ["http", "graphql", "sql", "jwt", "fixtures", "eventsourcing", "serde_utils"] }
+structopt = "0.3.20"

@@ -1,11 +1,12 @@
-use atb::includes::anyhow;
+mod mono;
+// use atb::includes::anyhow;
 use structopt::clap::AppSettings;
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
 enum Commands {
     #[structopt(name = "mono")]
-    Mono,
+    Mono(mono::Opts),
 
     #[structopt(name = "version")]
     Version,
@@ -23,19 +24,19 @@ struct PaperScissorsStone {
     command: Commands,
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> std::io::Result<()> {
     let opts = PaperScissorsStone::from_args();
 
     match opts.command {
-        Commands::Mono => Ok(()),
+        Commands::Mono(m_opts) => mono::run(m_opts),
         Commands::Version => {
             print_version();
             Ok(())
         }
     }
 
-    //#TODO: command line => setup server url, port, player hp, player damage
-    //#TODO: HTTP server
+    //#TODO: command line => setup dapp_port, http_dispatcher_url
+    //#TODO: HTTP server(implement Cartesi Rollups Backend API)
     //#TODO: only match for two players, no need for database now, only one room only
     //#TODO: game flow
 }

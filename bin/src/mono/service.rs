@@ -1,7 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{
-    get, http::header, post, web, App, Error, HttpRequest, HttpResponse, HttpServer, ResponseError,
-};
+use actix_web::{error, get, http::header, post, web, App, Error, HttpResponse, HttpServer};
 use chrono::Utc;
 use log;
 use reqwest::Client;
@@ -12,7 +10,6 @@ pub async fn build_http_service(
     dapp_port: String,
     http_dispatcher_url: String,
 ) -> std::io::Result<()> {
-    let static_service_info: &str = Box::leak(service_info().into_boxed_str());
     let addr = SocketAddr::from(([127, 0, 0, 1], dapp_port.parse::<u16>().unwrap()));
 
     HttpServer::new(move || {
@@ -29,14 +26,7 @@ pub async fn build_http_service(
                     ])
                     .max_age(3600),
             )
-            // .route(
-            //     "/healthz",
-            //     web::get().to(move || {
-            //         HttpResponse::Ok()
-            //             .insert_header(header::ContentType::json())
-            //             .body(static_service_info)
-            //     }),
-            // )
+            .service(healthz)
             .service(inspect)
             .service(advance_state)
     })
@@ -46,7 +36,6 @@ pub async fn build_http_service(
 }
 
 fn service_info() -> String {
-    log::debug!("HEALTHZ");
     serde_json::json!({
         "name":    env!("CARGO_PKG_NAME"),
         "version": env!("CARGO_PKG_VERSION"),
@@ -54,6 +43,16 @@ fn service_info() -> String {
         "server": "game server"
     })
     .to_string()
+}
+
+#[get("/healthz")]
+async fn healthz() -> Result<HttpResponse, Error> {
+    log::debug!("healthz");
+
+    let static_service_info: &str = Box::leak(service_info().into_boxed_str());
+    Ok(HttpResponse::Ok()
+        .insert_header(header::ContentType::json())
+        .body(static_service_info))
 }
 
 #[get("/inspect/{payload}")]
@@ -81,7 +80,6 @@ async fn advance_state(
 
     let client = Client::new();
 
-    //#TODO: Post to http_dispatcher /notice
     log::debug!("Call to Http Dispatcher: Adding Notice");
     let mut resp_payload = HashMap::new();
     //#TODO: replace "accept" with result hex
@@ -91,17 +89,22 @@ async fn advance_state(
         .post(format!("{}/notice", http_dispatcher_url))
         .json(&resp_payload)
         .send()
-        .await?;
+        .await
+        .map_err(|e| error::ErrorInternalServerError(e))?;
+
+    let notice_status = notice_resp.status();
+    let notice_resp_content = notice_resp
+        .text()
+        .await
+        .map_err(|e| error::ErrorInternalServerError(e))?;
 
     log::debug!(
         "Received notice status {} body {}",
-        notice_resp.status_code(),
-        notice_resp.text().await?
+        notice_status,
+        notice_resp_content
     );
 
-    //#TODO: Post to http_dispatcher /finish
     log::debug!("Call to Http Dispatcher: Finishing");
-    // response = requests.post(dispatcher_url + "/finish", json={"status": "accept"})
     let mut accept_body = HashMap::new();
     accept_body.insert("status", "accept");
 
@@ -109,8 +112,10 @@ async fn advance_state(
         .post(format!("{}/finish", http_dispatcher_url))
         .json(&accept_body)
         .send()
-        .await?;
-    log::debug!("Received finish status {}", finish_resp.status_code());
+        .await
+        .map_err(|e| error::ErrorInternalServerError(e))?;
+
+    log::debug!("Received finish status {}", finish_resp.status());
 
     Ok(HttpResponse::Ok().json(req))
 }

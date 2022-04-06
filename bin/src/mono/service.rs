@@ -77,9 +77,33 @@ pub struct AdvanceStateRequest {
     operation: String,
 }
 
+//#TODO: Return the latest GameState so that the client can know how to perform their next step
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdvanceStateResponse {
     result: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+enum GameResult {
+    Ongoing,
+    Defeated,
+    Victory,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct PlayerStatus {
+    hp: u16,
+    //#TODO: change this to Enum
+    action: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GameState {
+    round: u32,
+    player1_status: PlayerStatus,
+    player2_status: PlayerStatus,
+    round_result: GameResult,
+    game_result: GameResult,
 }
 
 #[post("/advance")]
@@ -89,7 +113,13 @@ async fn advance_state(
 ) -> Result<HttpResponse, Error> {
     log::debug!("advance_state");
 
-    //#TODO: Match: JoinGame / Move
+    /*
+        #Game Flow to implement
+        1. FindRoom (Join the only room) -> through /advance route
+        2. Get game status -> (through /inspect/{payload} route?)
+        3. Action (Paper / Scissors / Stone) -> through /advance route
+        4. Repeat by step 2.
+    */
 
     let client = Client::new();
     let http_dispatcher_url =

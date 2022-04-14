@@ -6,8 +6,8 @@ use actix_web::{
 };
 use chrono::Utc;
 use env_logger;
+use hyper::{header as HyperHeader, Body, Client, Method, Request};
 use log;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, net::SocketAddr};
 
@@ -106,6 +106,11 @@ pub struct GameState {
     game_result: GameResult,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexResponse {
+    index: u64,
+}
+
 #[post("/advance")]
 async fn advance_state(
     json_req: web::Json<AdvanceStateRequest>,
@@ -130,7 +135,7 @@ async fn advance_state(
             ))?;
 
     log::debug!("Call to Http Dispatcher: Adding Notice");
-    let mut resp_payload = HashMap::new();
+    // let mut resp_payload = HashMap::new();
 
     let response = AdvanceStateResponse {
         result: String::from("Test"),
@@ -138,42 +143,50 @@ async fn advance_state(
 
     let serialized = serde_json::to_string(&response).unwrap();
     log::debug!("Serialized response: {}", serialized);
-    let hex_response = hex::encode(serialized);
-    log::debug!("Hex-encoded response: {}", hex_response);
+    // let hex_response = hex::encode(serialized);
+    // log::debug!("Hex-encoded response: {}", hex_response);
 
-    resp_payload.insert("payload", hex_response);
+    // resp_payload.insert("payload", hex_response);
+
+    let notice_req = Request::builder()
+        .method(Method::POST)
+        .header(HyperHeader::CONTENT_TYPE, "application/json")
+        .uri(format!("{}/notice", http_dispatcher_url))
+        .body(Body::from(serialized))?;
 
     let notice_resp = client
-        .post(format!("{}/notice", http_dispatcher_url))
-        .json(&resp_payload)
-        .send()
+        .request(notice_req)
         .await
         .map_err(|e| error::ErrorInternalServerError(e))?;
 
     let notice_status = notice_resp.status();
-    let notice_resp_content = notice_resp
-        .text()
-        .await
-        .map_err(|e| error::ErrorInternalServerError(e))?;
+    let id_response = serde_json::from_slice::<IndexResponse>(
+        &hyper::body::to_bytes(notice_resp)
+            .await
+            .map_err(|e| error::ErrorInternalServerError(e))?
+            .to_vec(),
+    );
 
     log::debug!(
-        "Received notice status {} body {}",
+        "Received notice status {} body {:?}",
         notice_status,
-        notice_resp_content
+        &id_response
     );
 
     log::debug!("Call to Http Dispatcher: Finishing");
     let mut accept_body = HashMap::new();
     accept_body.insert("status", "accept");
 
-    let finish_resp = client
-        .post(format!("{}/finish", http_dispatcher_url))
-        .json(&accept_body)
-        .send()
+    let finish_req = Request::builder()
+        .method(Method::POST)
+        .header(HyperHeader::CONTENT_TYPE, "application/json")
+        .uri(format!("{}/finish", http_dispatcher_url))
+        .body(Body::from(serde_json::to_string(&accept_body)?))?;
+
+    client
+        .request(finish_req)
         .await
         .map_err(|e| error::ErrorInternalServerError(e))?;
-
-    log::debug!("Received finish status {}", finish_resp.status());
 
     Ok(HttpResponse::Ok().json(json_req))
 }

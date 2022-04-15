@@ -5,6 +5,9 @@ ROOT_DIR := $(CURDIR)
 
 ###########################################################
 ### Local Deployment
+debug:
+	cargo run mono
+
 build:
 	source ./environment.sh ;\
 	cargo +nightly build -Z build-std=std,core,alloc,panic_abort,proc_macro --target riscv64ima-cartesi-linux-gnu.json --release

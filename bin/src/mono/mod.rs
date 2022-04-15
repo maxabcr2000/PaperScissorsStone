@@ -1,4 +1,7 @@
+mod http_dispatcher;
+mod model;
 mod service;
+
 // use atb::includes::anyhow;
 use actix_web::rt::System;
 use service::build_http_service;

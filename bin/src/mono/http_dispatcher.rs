@@ -1,11 +1,19 @@
+extern crate hex;
 use crate::mono::model;
 use actix_web::{error, Error};
 use hyper::{header as HyperHeader, Body, Client, Method, Request};
 use model::{FinishStatus, IndexResponse, Notice};
 
-pub async fn send_notice(http_dispatcher_url: &str, notice: Notice) -> Result<(), Error> {
+pub async fn send_notice(http_dispatcher_url: &str, payload: String) -> Result<(), Error> {
     log::debug!("Call to Http Dispatcher: Adding Notice");
     let client = Client::new();
+
+    let hexed_payload = hex::encode(payload);
+    log::debug!("Hex-encoded payload: {}", hexed_payload);
+
+    let notice = Notice {
+        payload: "0x".to_string() + &hexed_payload,
+    };
 
     let notice_json = serde_json::to_string(&notice).unwrap();
     log::debug!("notice_json: {}", notice_json);

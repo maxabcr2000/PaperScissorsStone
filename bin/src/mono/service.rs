@@ -10,7 +10,7 @@ use chrono::Utc;
 use env_logger;
 use http_dispatcher::{send_finish_request, send_notice};
 use log;
-use model::{AdvanceRequest, AdvanceStateResponse, FinishStatus, Notice};
+use model::{AdvanceRequest, AdvanceStateResponse, FinishStatus};
 use std::net::SocketAddr;
 
 pub async fn build_http_service(
@@ -99,27 +99,17 @@ async fn advance_state(
     };
 
     let notice_payload = serde_json::to_string(&response).unwrap();
-    log::debug!("Notice Payload: {}", notice_payload);
-    // let hex_response = hex::encode(serialized);
-    // log::debug!("Hex-encoded response: {}", hex_response);
+    match send_notice(&http_dispatcher_url, notice_payload).await {
+        Ok(()) => {
+            log::debug!("send_notice successed");
+            send_finish_request(&http_dispatcher_url, FinishStatus::Accept).await?;
 
-    // resp_payload.insert("payload", hex_response);
-
-    let notice = Notice {
-        payload: notice_payload,
-    };
-
-    match send_notice(&http_dispatcher_url, notice).await {
-        Ok(()) => (),
+            Ok(HttpResponse::Accepted().body(""))
+        }
         Err(e) => {
             log::debug!("Error occurred while send_notice: {}", e);
             send_finish_request(&http_dispatcher_url, FinishStatus::Reject).await?;
-            return Err(e);
+            Ok(HttpResponse::InternalServerError().body(""))
         }
-    };
-
-    log::debug!("Ready to send accept status");
-    send_finish_request(&http_dispatcher_url, FinishStatus::Accept).await?;
-
-    Ok(HttpResponse::Ok().json(json_req))
+    }
 }

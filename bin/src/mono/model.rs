@@ -1,31 +1,39 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub enum GameResult {
-    Ongoing,
-    Defeated,
-    Victory,
+pub enum PlayerAction {
+    Paper,
+    Scissors,
+    Stone,
 }
+
+// #[derive(Debug, Clone, Deserialize, Serialize)]
+// pub enum PlayerStatus {
+//     Ready,
+//     NotReady,
+// }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct PlayerStatus {
-    hp: u16,
-    //#TODO: change this to Enum
-    action: String,
+pub struct Player {
+    //#Note: This will be unique id for now
+    pub name: String,
+    pub hp: u16,
+    pub current_action: Option<PlayerAction>,
+    // status: PlayerStatus,
 }
 
+//#NOTE: When the round_winner is decided, we need to update round number, reset Player status + round_winner, then Add GameState as Notice again
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GameState {
-    round: u32,
-    player1_status: PlayerStatus,
-    player2_status: PlayerStatus,
-    round_result: GameResult,
-    game_result: GameResult,
+    pub round: u32,
+    pub players: Vec<Player>,
+    pub round_winner_name: Option<String>,
+    pub game_winner_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexResponse {
-    index: u64,
+    pub index: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -53,7 +61,6 @@ pub struct AdvanceRequest {
 //     operation: String,
 // }
 
-//#TODO: Return the latest GameState so that the client can know how to perform their next step
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdvanceStateResponse {
     pub result: String,

@@ -35,9 +35,6 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    //#TODO: command line => setup dapp_port, http_dispatcher_url
-    //#TODO: HTTP server(implement Cartesi Rollups Backend API)
-    //#TODO: only match for two players, no need for database now, only one room only
     //#TODO: game flow
 }
 

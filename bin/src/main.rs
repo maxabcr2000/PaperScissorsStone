@@ -34,8 +34,6 @@ fn main() -> std::io::Result<()> {
             Ok(())
         }
     }
-
-    //#TODO: game flow
 }
 
 fn print_version() {

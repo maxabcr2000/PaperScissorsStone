@@ -53,13 +53,19 @@ pub struct AdvanceMetadata {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdvanceRequest {
     pub metadata: AdvanceMetadata,
+    /*
+        #Note: :
+        This is actually the data we passed in through input
+        We'll later convert payload into GameReqest object
+    */
     pub payload: String,
 }
 
-// #[derive(Debug, Clone, Deserialize, Serialize)]
-// pub struct AdvanceStateRequest {
-//     operation: String,
-// }
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct GameRequest {
+    pub operation: String,
+    pub player_name: String,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AdvanceStateResponse {
@@ -71,3 +77,6 @@ pub enum FinishStatus {
     Accept,
     Reject,
 }
+
+pub const PLAYER_HP: u16 = 1000;
+pub const PLAYER_DAMAGE: u16 = 300;

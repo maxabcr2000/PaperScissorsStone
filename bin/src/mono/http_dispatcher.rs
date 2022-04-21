@@ -59,6 +59,8 @@ pub async fn send_finish_request(
         FinishStatus::Reject => "reject",
     };
 
+    log::debug!("status_value: {}", status_value);
+
     let mut json_status = std::collections::HashMap::new();
     json_status.insert("status", status_value);
 

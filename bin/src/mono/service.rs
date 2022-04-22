@@ -237,13 +237,14 @@ pub fn handle_player_action(
                         mut_game.game_result = game_winner;
 
                         //Update changes back to mut_game
-                        mut_game
-                            .players
-                            .insert(player_name.clone(), mut_player.clone());
+
                         mut_game
                             .players
                             .insert(mut_other_player.name.clone(), mut_other_player.clone());
                     }
+                    mut_game
+                        .players
+                        .insert(player_name.clone(), mut_player.clone());
 
                     Ok(mut_game)
                 } else {

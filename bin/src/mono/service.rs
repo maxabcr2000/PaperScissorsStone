@@ -7,14 +7,14 @@ use actix_web::{
     HttpResponse, HttpServer, Responder,
 };
 use chrono::Utc;
-use env_logger;
 use http_dispatcher::{send_finish_request, send_notice};
-use log;
 use model::{
-    AdvanceRequest, AdvanceStateResponse, FinishStatus, GameRequest, GameState, Player, PLAYER_HP,
+    AdvanceRequest, AdvanceStateResponse, FinishStatus, GameRequest, GameState, GameWinner, Player,
+    PlayerAction, RoundResult, PLAYER_BIG_DAMAGE, PLAYER_HP, PLAYER_SMALL_DAMAGE,
 };
+use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 pub async fn build_http_service(
     dapp_port: String,
@@ -24,9 +24,9 @@ pub async fn build_http_service(
     let addr = SocketAddr::from(([127, 0, 0, 1], dapp_port.parse::<u16>().unwrap()));
     let game = Data::new(Mutex::new(GameState {
         round: 1,
-        players: Vec::new(),
-        round_winner_name: None,
-        game_winner_name: None,
+        players: HashMap::<String, Player>::new(),
+        round_result: GameWinner::None,
+        game_result: GameWinner::None,
     }));
 
     log::debug!("build_http_service");
@@ -75,7 +75,7 @@ async fn healthz() -> Result<HttpResponse, Error> {
         .body(static_service_info))
 }
 
-//#Note: We can query GameState by grqphql directly from Rollup
+//#Note: We can query GameState by grqphql directly from Rollup, this Api is only for frontend
 #[get("/inspect/{payload}")]
 async fn inspect(payload: web::Path<String>) -> Result<impl Responder, Error> {
     log::debug!("inspect");
@@ -85,6 +85,7 @@ async fn inspect(payload: web::Path<String>) -> Result<impl Responder, Error> {
     Ok(HttpResponse::Ok().json(payload.into_inner()))
 }
 
+//#TODO: Define Error messages as const strings in model.rs
 #[post("/advance")]
 async fn advance_state(
     json_req: web::Json<AdvanceRequest>,
@@ -110,14 +111,14 @@ async fn advance_state(
     */
 
     let request = json_req.into_inner();
-    let hex_payload = request.payload.replace("0x", "");
+    let hex_payload = request.payload.trim_start_matches("0x");
     log::debug!("hex_payload: {}", &hex_payload);
 
     let json_payload = hex::decode(hex_payload).map_err(|e| error::ErrorBadRequest(e))?;
     let game_req: GameRequest = serde_json::from_slice(&json_payload).unwrap();
     let player_name = game_req.player_name;
 
-    //#TODO: Implement each actions
+    //#TODO: Use Enum or Const string in match arms
     let gameflow_result = match game_req.operation.as_str() {
         "find_game" => {
             let new_player = Player {
@@ -126,19 +127,19 @@ async fn advance_state(
                 current_action: None,
             };
 
+            //#TODO: Check GameState.game_result to see if game has already ended, if ended, reset GameState to start a new game
+
             match mut_game.players.len() {
                 0 => {
-                    mut_game.players.push(new_player);
+                    mut_game.players.insert(player_name, new_player);
                     Ok(mut_game)
                 }
                 1 => {
                     //Check if player is already in game
-                    let existed_player = &mut_game.players[0];
-
-                    match existed_player.name.clone() {
-                        n if n.eq(&player_name) => Err("Already in game"),
-                        _ => {
-                            mut_game.players.push(new_player);
+                    match mut_game.players.get(&player_name) {
+                        Some(_) => Err("Already in game"),
+                        None => {
+                            mut_game.players.insert(player_name, new_player);
                             Ok(mut_game)
                         }
                     }
@@ -146,20 +147,9 @@ async fn advance_state(
                 _ => Err("Room is full"),
             }
         }
-        "paper" => {
-            //#TODO Win
-            //#TODO Lose
-            //#TODO Draw
-            Ok(mut_game)
-        }
-        "scissors" => {
-            //#TODO
-            Ok(mut_game)
-        }
-        "stone" => {
-            //#TODO
-            Ok(mut_game)
-        }
+        "paper" => handle_player_action(player_name, PlayerAction::Paper, mut_game),
+        "scissors" => handle_player_action(player_name, PlayerAction::Scissors, mut_game),
+        "stone" => handle_player_action(player_name, PlayerAction::Stone, mut_game),
         _ => Err("Not supported action"),
     };
 
@@ -177,20 +167,112 @@ async fn advance_state(
                 Ok(()) => {
                     log::debug!("send_notice successed");
                     send_finish_request(&http_dispatcher_url, FinishStatus::Accept).await?;
-
-                    Ok(HttpResponse::Accepted())
                 }
                 Err(e) => {
                     log::debug!("Error occurred while send_notice: {}", e);
                     send_finish_request(&http_dispatcher_url, FinishStatus::Reject).await?;
-                    Ok(HttpResponse::InternalServerError())
                 }
             }
         }
         Err(e) => {
             log::debug!("Error occurred while handling game logic: {}", e);
             send_finish_request(&http_dispatcher_url, FinishStatus::Reject).await?;
-            Ok(HttpResponse::InternalServerError())
         }
+    }
+
+    Ok(HttpResponse::Accepted())
+}
+
+pub fn handle_player_action(
+    player_name: String,
+    player_action: PlayerAction,
+    mut_game: MutexGuard<GameState>,
+) -> Result<MutexGuard<GameState>, &'static str> {
+    //Check GameState.game_result to see if game has already ended
+    let mut mut_game = mut_game;
+
+    match mut_game.game_result {
+        GameWinner::None => {
+            if let Some(p) = mut_game.players.get(&player_name) {
+                if let Some(other_player) = mut_game
+                    .players
+                    .values()
+                    .filter(|x| !x.name.eq(&player_name))
+                    .next()
+                {
+                    //#TODO: When new player action arrived and round_result is not GameResult::None, Round+=1 and reset some of the game states
+
+                    let mut mut_player = p.clone();
+                    mut_player.current_action = Some(player_action.clone());
+                    let mut mut_other_player = other_player.clone();
+
+                    if let Some(other_action) = other_player.current_action.clone() {
+                        match paper_scissors_stone(player_action, other_action) {
+                            RoundResult::Draw => {
+                                mut_player.hp -= PLAYER_SMALL_DAMAGE;
+                                mut_other_player.hp -= PLAYER_SMALL_DAMAGE;
+                                mut_game.round_result = GameWinner::Draw;
+                            }
+                            RoundResult::Lose => {
+                                mut_player.hp -= PLAYER_BIG_DAMAGE;
+                                mut_game.round_result =
+                                    GameWinner::Player(mut_other_player.name.clone());
+                            }
+                            RoundResult::Win => {
+                                mut_other_player.hp -= PLAYER_BIG_DAMAGE;
+                                mut_game.round_result = GameWinner::Player(player_name.clone());
+                            }
+                        }
+
+                        //Check if game is ended
+                        let game_winner = match (mut_player.hp, mut_other_player.hp) {
+                            (hp, other_hp) if hp <= 0 && other_hp <= 0 => GameWinner::Draw,
+                            (hp, _) if hp <= 0 => GameWinner::Player(mut_other_player.name.clone()),
+                            (_, other_hp) if other_hp <= 0 => {
+                                GameWinner::Player(mut_player.name.clone())
+                            }
+                            _ => GameWinner::None,
+                        };
+
+                        mut_game.game_result = game_winner;
+
+                        //Update changes back to mut_game
+                        mut_game
+                            .players
+                            .insert(player_name.clone(), mut_player.clone());
+                        mut_game
+                            .players
+                            .insert(mut_other_player.name.clone(), mut_other_player.clone());
+                    }
+
+                    Ok(mut_game)
+                } else {
+                    Err("Invalid player number")
+                }
+            } else {
+                Err("Invalid player")
+            }
+        }
+        _ => Err("Game has already ended"),
+    }
+}
+
+pub fn paper_scissors_stone(my_action: PlayerAction, other_action: PlayerAction) -> RoundResult {
+    match my_action {
+        PlayerAction::Paper => match other_action {
+            PlayerAction::Paper => RoundResult::Draw,
+            PlayerAction::Scissors => RoundResult::Lose,
+            PlayerAction::Stone => RoundResult::Win,
+        },
+        PlayerAction::Scissors => match other_action {
+            PlayerAction::Paper => RoundResult::Win,
+            PlayerAction::Scissors => RoundResult::Draw,
+            PlayerAction::Stone => RoundResult::Lose,
+        },
+        PlayerAction::Stone => match other_action {
+            PlayerAction::Paper => RoundResult::Lose,
+            PlayerAction::Scissors => RoundResult::Win,
+            PlayerAction::Stone => RoundResult::Draw,
+        },
     }
 }

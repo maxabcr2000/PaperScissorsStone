@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum PlayerAction {
@@ -7,11 +8,18 @@ pub enum PlayerAction {
     Stone,
 }
 
-// #[derive(Debug, Clone, Deserialize, Serialize)]
-// pub enum PlayerStatus {
-//     Ready,
-//     NotReady,
-// }
+pub enum RoundResult {
+    Win,
+    Lose,
+    Draw,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub enum GameWinner {
+    Player(String),
+    Draw,
+    None,
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Player {
@@ -19,16 +27,15 @@ pub struct Player {
     pub name: String,
     pub hp: u16,
     pub current_action: Option<PlayerAction>,
-    // status: PlayerStatus,
 }
 
 //#NOTE: When the round_winner is decided, we need to update round number, reset Player status + round_winner, then Add GameState as Notice again
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GameState {
     pub round: u32,
-    pub players: Vec<Player>,
-    pub round_winner_name: Option<String>,
-    pub game_winner_name: Option<String>,
+    pub players: HashMap<String, Player>,
+    pub round_result: GameWinner,
+    pub game_result: GameWinner,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,4 +86,5 @@ pub enum FinishStatus {
 }
 
 pub const PLAYER_HP: u16 = 1000;
-pub const PLAYER_DAMAGE: u16 = 300;
+pub const PLAYER_BIG_DAMAGE: u16 = 300;
+pub const PLAYER_SMALL_DAMAGE: u16 = 100;

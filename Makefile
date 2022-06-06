@@ -2,6 +2,8 @@
 SHELL := /bin/bash
 PROJECT := paper-scissors-stone
 ROOT_DIR := $(CURDIR)
+TOOLCHAIN_TAG := 0.9.0
+TOOLCHAIN_IMG := cartesi/toolchain:$(TOOLCHAIN_TAG)
 
 ###########################################################
 ### Local Deployment
@@ -15,14 +17,13 @@ build:
 ###########################################################
 ### Docker
 
-# docker.io/cartesi/rootfs:devel image is built from https://github.com/cartesi/image-rootfs
 build-env:
 	docker run -it --rm -h playground \
 		-u root \
 		-v ${ROOT_DIR}:/app \
 		-v ${ROOT_DIR}/target:/app/target \
 		-w /app \
-		docker.io/cartesi/rootfs:devel /bin/bash
+		${TOOLCHAIN_IMG} /bin/bash
 
 build-linux:
 	docker run --rm \
@@ -30,4 +31,4 @@ build-linux:
 	-v ${ROOT_DIR}:/app \
 	-v ${ROOT_DIR}/target:/app/target \
 	-w /app \
-	docker.io/cartesi/rootfs:devel /bin/bash -c "make build"
+	${TOOLCHAIN_IMG} /bin/bash -c "make build"

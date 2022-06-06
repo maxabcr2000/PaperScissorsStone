@@ -47,7 +47,6 @@ pub async fn build_http_service(
             )
             .wrap(Logger::new("%a %{User-Agent}i"))
             .service(healthz)
-            .service(inspect)
             .service(advance_state)
     })
     .bind(addr)?

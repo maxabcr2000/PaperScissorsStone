@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use strum_macros::{Display as StrumDisplay, EnumString};
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, StrumDisplay, EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum PlayerAction {
+    FindGame,
     Paper,
     Scissors,
     Stone,
@@ -79,7 +82,8 @@ pub struct AdvanceStateResponse {
     pub result: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, StrumDisplay, EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum FinishStatus {
     Accept,
     Reject,

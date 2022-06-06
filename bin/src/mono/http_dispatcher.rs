@@ -54,11 +54,7 @@ pub async fn send_finish_request(
     log::debug!("Call to Http Dispatcher: Finishing");
     let client = Client::new();
 
-    let status_value = match status {
-        FinishStatus::Accept => "accept",
-        FinishStatus::Reject => "reject",
-    };
-
+    let status_value = status.to_string();
     log::debug!("status_value: {}", status_value);
 
     let mut json_status = std::collections::HashMap::new();

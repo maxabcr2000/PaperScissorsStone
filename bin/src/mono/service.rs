@@ -75,16 +75,6 @@ async fn healthz() -> Result<HttpResponse, Error> {
         .body(static_service_info))
 }
 
-//#Note: We can query GameState by grqphql directly from Rollup, this Api is only for frontend
-#[get("/inspect/{payload}")]
-async fn inspect(payload: web::Path<String>) -> Result<impl Responder, Error> {
-    log::debug!("inspect");
-
-    //#TODO: Need to define a proper Payload struct
-    //#TODO: Query Room State by payload
-    Ok(HttpResponse::Ok().json(payload.into_inner()))
-}
-
 //#TODO: Define Error messages as const strings in model.rs
 #[post("/advance")]
 async fn advance_state(
@@ -118,9 +108,10 @@ async fn advance_state(
     let game_req: GameRequest = serde_json::from_slice(&json_payload).unwrap();
     let player_name = game_req.player_name;
 
-    //#TODO: Use Enum or Const string in match arms
-    let gameflow_result = match game_req.operation.as_str() {
-        "find_game" => {
+    let player_action: Result<PlayerAction, strum::ParseError>= game_req.operation.parse();
+
+    let gameflow_result = match player_action {
+        Ok(PlayerAction::FindGame) => {
             let new_player = Player {
                 name: player_name.clone(),
                 hp: PLAYER_HP,
@@ -147,13 +138,11 @@ async fn advance_state(
                 _ => Err("Room is full"),
             }
         }
-        "paper" => handle_player_action(player_name, PlayerAction::Paper, mut_game),
-        "scissors" => handle_player_action(player_name, PlayerAction::Scissors, mut_game),
-        "stone" => handle_player_action(player_name, PlayerAction::Stone, mut_game),
-        _ => Err("Not supported action"),
+        Ok(PlayerAction::Paper) | Ok(PlayerAction::Scissors) | Ok(PlayerAction::Stone) => handle_player_action(player_name, player_action.unwrap(), mut_game),
+        Err(_) => Err("Not supported action"),
     };
 
-    match gameflow_result {
+    let finish_status = match gameflow_result {
         Ok(v) => {
             //#NOTE: Use deref operator: * to take out the GameState inside the MutexGuard
             let v = &*v;
@@ -164,22 +153,23 @@ async fn advance_state(
 
             let notice_payload = serde_json::to_string(&response).unwrap();
             match send_notice(&http_dispatcher_url, notice_payload).await {
-                Ok(()) => {
+                Ok(_) => {
                     log::debug!("send_notice successed");
-                    send_finish_request(&http_dispatcher_url, FinishStatus::Accept).await?;
+                    FinishStatus::Accept
                 }
                 Err(e) => {
                     log::debug!("Error occurred while send_notice: {}", e);
-                    send_finish_request(&http_dispatcher_url, FinishStatus::Reject).await?;
+                    FinishStatus::Reject
                 }
             }
         }
         Err(e) => {
             log::debug!("Error occurred while handling game logic: {}", e);
-            send_finish_request(&http_dispatcher_url, FinishStatus::Reject).await?;
+            FinishStatus::Reject
         }
-    }
+    };
 
+    send_finish_request(&http_dispatcher_url, finish_status).await?;
     Ok(HttpResponse::Accepted())
 }
 
@@ -210,19 +200,22 @@ pub fn handle_player_action(
 
                     if let Some(other_action) = other_player.current_action.clone() {
                         match paper_scissors_stone(player_action, other_action) {
-                            RoundResult::Draw => {
+                            Some(RoundResult::Draw) => {
                                 mut_player.hp -= PLAYER_SMALL_DAMAGE;
                                 mut_other_player.hp -= PLAYER_SMALL_DAMAGE;
                                 mut_game.round_result = GameWinner::Draw;
                             }
-                            RoundResult::Lose => {
+                            Some(RoundResult::Lose) => {
                                 mut_player.hp -= PLAYER_BIG_DAMAGE;
                                 mut_game.round_result =
                                     GameWinner::Player(mut_other_player.name.clone());
                             }
-                            RoundResult::Win => {
+                            Some(RoundResult::Win) => {
                                 mut_other_player.hp -= PLAYER_BIG_DAMAGE;
                                 mut_game.round_result = GameWinner::Player(player_name.clone());
+                            }
+                            None => {
+                              return Err("Invalid PlayerAction");
                             }
                         }
 
@@ -260,22 +253,26 @@ pub fn handle_player_action(
     }
 }
 
-pub fn paper_scissors_stone(my_action: PlayerAction, other_action: PlayerAction) -> RoundResult {
+pub fn paper_scissors_stone(my_action: PlayerAction, other_action: PlayerAction) -> Option<RoundResult> {
     match my_action {
         PlayerAction::Paper => match other_action {
-            PlayerAction::Paper => RoundResult::Draw,
-            PlayerAction::Scissors => RoundResult::Lose,
-            PlayerAction::Stone => RoundResult::Win,
+            PlayerAction::Paper => Some(RoundResult::Draw),
+            PlayerAction::Scissors => Some(RoundResult::Lose),
+            PlayerAction::Stone => Some(RoundResult::Win),
+            PlayerAction::FindGame => None,
         },
         PlayerAction::Scissors => match other_action {
-            PlayerAction::Paper => RoundResult::Win,
-            PlayerAction::Scissors => RoundResult::Draw,
-            PlayerAction::Stone => RoundResult::Lose,
+            PlayerAction::Paper => Some(RoundResult::Win),
+            PlayerAction::Scissors => Some(RoundResult::Draw),
+            PlayerAction::Stone => Some(RoundResult::Lose),
+            PlayerAction::FindGame => None,
         },
         PlayerAction::Stone => match other_action {
-            PlayerAction::Paper => RoundResult::Lose,
-            PlayerAction::Scissors => RoundResult::Win,
-            PlayerAction::Stone => RoundResult::Draw,
+            PlayerAction::Paper => Some(RoundResult::Lose),
+            PlayerAction::Scissors => Some(RoundResult::Win),
+            PlayerAction::Stone => Some(RoundResult::Draw),
+            PlayerAction::FindGame => None,
         },
+        PlayerAction::FindGame => None
     }
 }

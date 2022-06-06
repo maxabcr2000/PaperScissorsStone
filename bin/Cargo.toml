@@ -18,3 +18,5 @@ log = "0.4"
 env_logger = "0.9"
 hex = "0.4"
 hyper = { version = "0.14.15", features = ["http1", "runtime", "client"] }
+strum = "0.24"
+strum_macros = "0.24"

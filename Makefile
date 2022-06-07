@@ -31,4 +31,6 @@ build-linux:
 	-v ${ROOT_DIR}:/app \
 	-v ${ROOT_DIR}/target:/app/target \
 	-w /app \
-	${TOOLCHAIN_IMG} /bin/bash -c "make build"
+	${TOOLCHAIN_IMG} /bin/bash -c "make build" 
+	cp ./target/riscv64ima-cartesi-linux-gnu/bin ./cartesi-dapp/server/paper-scissors-stone.bin
+

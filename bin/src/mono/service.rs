@@ -1,96 +1,79 @@
 extern crate hex;
 use crate::mono::http_dispatcher;
 use crate::mono::model;
-use actix_cors::Cors;
-use actix_web::{
-    error, get, http::header, middleware::Logger, post, web, web::Data, App, Error, HttpRequest,
-    HttpResponse, HttpServer, Responder,
-};
-use chrono::Utc;
 use http_dispatcher::{send_finish_request, send_notice};
 use model::{
-    AdvanceRequest, AdvanceStateResponse, FinishStatus, GameRequest, GameState, GameWinner, Player,
-    PlayerAction, RoundResult, PLAYER_BIG_DAMAGE, PLAYER_HP, PLAYER_SMALL_DAMAGE,
+    AdvanceRequest, FinishStatus, GameRequest, GameState, GameWinner, Player,
+    PlayerAction, RoundResult, PLAYER_BIG_DAMAGE, PLAYER_HP, PLAYER_SMALL_DAMAGE, RollupResponse, RequestType,
 };
 use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::{Mutex, MutexGuard};
+use hyper::StatusCode;
 
-pub async fn build_http_service(
-    dapp_port: String,
-    http_dispatcher_url: String,
-) -> std::io::Result<()> {
-    env_logger::init_from_env(env_logger::Env::new().default_filter_or("debug"));
-    let addr = SocketAddr::from(([127, 0, 0, 1], dapp_port.parse::<u16>().unwrap()));
-    let game = Data::new(Mutex::new(GameState {
+pub async fn rollup(
+    http_dispatcher_url: &str
+) {
+    let mut game =  GameState {
         round: 1,
         players: HashMap::<String, Player>::new(),
         round_result: GameWinner::None,
         game_result: GameWinner::None,
-    }));
+    };
 
-    log::debug!("build_http_service");
-    HttpServer::new(move || {
-        App::new()
-            .app_data(http_dispatcher_url.clone())
-            .app_data(Data::clone(&game))
-            .wrap(
-                Cors::default()
-                    .allow_any_origin()
-                    .allowed_methods(vec!["POST", "GET", "PUT"])
-                    .allowed_headers(vec![
-                        header::AUTHORIZATION,
-                        header::ACCEPT,
-                        header::CONTENT_TYPE,
-                    ])
-                    .max_age(3600),
-            )
-            .wrap(Logger::new("%a %{User-Agent}i"))
-            .service(healthz)
-            .service(advance_state)
-    })
-    .bind(addr)?
-    .run()
-    .await
-}
+    let mut finish_status = FinishStatus::Accept;
+    
+    loop {
+        let resp = match send_finish_request(http_dispatcher_url, finish_status.clone()).await {
+            Some(resp) => resp,
+            None => {
+                continue;
+            }
+        };
 
-fn service_info() -> String {
-    serde_json::json!({
-        "name":    env!("CARGO_PKG_NAME"),
-        "version": env!("CARGO_PKG_VERSION"),
-        "startTime": Utc::now().timestamp(),
-        "server": "game server"
-    })
-    .to_string()
-}
+        if resp.status() == StatusCode::ACCEPTED {
+            log::debug!("No pending rollup request, trying again");
+        } else {
+            let buf = match hyper::body::to_bytes(resp).await {
+                Ok(bz) => bz.to_vec(),
+                Err(e) => {
+                    log::debug!("Failed to handle /finish response: {}", e);
+                    continue;
+                }
+            };
 
-#[get("/healthz")]
-async fn healthz() -> Result<HttpResponse, Error> {
-    log::debug!("healthz");
+            let rollup_resp = match serde_json::from_slice::<RollupResponse>(&buf) {
+                Ok(json) => json,
+                Err(e) => {
+                    log::debug!("Failed to deserialize RollupResponse: {}", e);
+                    continue;
+                }
+            };
+            let rollup_req: Result<RequestType, strum::ParseError> = rollup_resp.request_type.parse();
 
-    let static_service_info: &str = Box::leak(service_info().into_boxed_str());
-    Ok(HttpResponse::Ok()
-        .insert_header(header::ContentType::json())
-        .body(static_service_info))
+            match rollup_req {
+                Ok(RequestType::AdvanceState) => {
+                    //Now we need to handle error case so that we can send reject status through /finish call
+                    finish_status =
+                        advance_state(http_dispatcher_url, &mut game, rollup_resp.data,  ).await;
+                }
+                Ok(RequestType::InspectState) => {
+                    //Since we have not implement inspect(), do nothing now
+                }
+                Err(e) => {
+                    log::debug!("Error occurred while handling rollup request: {}", e);
+                }
+            }
+        }
+    }
 }
 
 //#TODO: Define Error messages as const strings in model.rs
-#[post("/advance")]
 async fn advance_state(
-    json_req: web::Json<AdvanceRequest>,
-    http_req: HttpRequest,
-) -> Result<impl Responder, Error> {
+    http_dispatcher_url: &str,
+    mut_game: &mut GameState,
+    request: AdvanceRequest,
+) -> FinishStatus {
     log::debug!("advance_state");
 
-    let http_dispatcher_url = http_req
-        .app_data::<String>()
-        .expect("http_dispatcher_url data not found");
-
-    let game = http_req
-        .app_data::<Data<Mutex<GameState>>>()
-        .expect("game not found");
-
-    let mut mut_game = game.lock().unwrap();
     /*
         Game Flow to implement
         1. FindRoom (Join the only room) -> through /advance route
@@ -99,17 +82,23 @@ async fn advance_state(
         4. Repeat by step 2.
     */
 
-    let request = json_req.into_inner();
     let hex_payload = request.payload.trim_start_matches("0x");
     log::debug!("hex_payload: {}", &hex_payload);
 
-    let json_payload = hex::decode(hex_payload).map_err(|e| error::ErrorBadRequest(e))?;
+    let json_payload = match hex::decode(hex_payload){
+        Ok(json) => json,
+        Err(e) => {
+            log::debug!("Error occurred while decoding GameRequest: {}", e);
+            return FinishStatus::Reject;
+        }
+    };
+
     let game_req: GameRequest = serde_json::from_slice(&json_payload).unwrap();
     let player_name = game_req.player_name;
 
     let player_action: Result<PlayerAction, strum::ParseError>= game_req.operation.parse();
 
-    let gameflow_result = match player_action {
+    match player_action {
         Ok(PlayerAction::FindGame) => {
             let new_player = Player {
                 name: player_name.clone(),
@@ -118,72 +107,67 @@ async fn advance_state(
             };
 
             //#TODO: Check GameState.game_result to see if game has already ended, if ended, reset GameState to start a new game
-
             match mut_game.players.len() {
                 0 => {
                     mut_game.players.insert(player_name, new_player);
-                    Ok(mut_game)
+                    
+                    save_gamestate_as_notice(http_dispatcher_url, mut_game).await
                 }
                 1 => {
                     //Check if player is already in game
                     match mut_game.players.get(&player_name) {
-                        Some(_) => Err("Already in game"),
+                        Some(_) => {
+                            log::debug!("Already in game");
+                            FinishStatus::Reject
+                        },
                         None => {
                             mut_game.players.insert(player_name, new_player);
-                            Ok(mut_game)
+                           
+                            save_gamestate_as_notice(http_dispatcher_url, mut_game).await
                         }
                     }
                 }
-                _ => Err("Room is full"),
-            }
-        }
-        Ok(PlayerAction::Paper) | Ok(PlayerAction::Scissors) | Ok(PlayerAction::Stone) => handle_player_action(player_name, player_action.unwrap(), mut_game),
-        Err(_) => Err("Not supported action"),
-    };
-
-    let finish_status = match gameflow_result {
-        Ok(v) => {
-            //#NOTE: Use deref operator: * to take out the GameState inside the MutexGuard
-            let v = &*v;
-            let result_json = serde_json::to_string(v).unwrap();
-            let response = AdvanceStateResponse {
-                result: result_json,
-            };
-
-            let notice_payload = serde_json::to_string(&response).unwrap();
-            match send_notice(&http_dispatcher_url, notice_payload).await {
-                Ok(_) => {
-                    log::debug!("send_notice successed");
-                    FinishStatus::Accept
-                }
-                Err(e) => {
-                    log::debug!("Error occurred while send_notice: {}", e);
+                _ => {
+                    log::debug!("Room is full");
                     FinishStatus::Reject
-                }
+                },
             }
-        }
-        Err(e) => {
-            log::debug!("Error occurred while handling game logic: {}", e);
+        },
+        Ok(PlayerAction::Paper) | Ok(PlayerAction::Scissors) | Ok(PlayerAction::Stone) => handle_player_action(http_dispatcher_url, player_name, player_action.unwrap(), mut_game).await,
+        Err(_) => {
+            log::debug!("Not supported action");
             FinishStatus::Reject
-        }
-    };
+        },
+    }
 
-    send_finish_request(&http_dispatcher_url, finish_status).await?;
-    Ok(HttpResponse::Accepted())
 }
 
-pub fn handle_player_action(
+pub async fn save_gamestate_as_notice(
+    http_dispatcher_url: &str,
+    mut_game: &mut GameState,
+) -> FinishStatus {
+    let notice_payload = serde_json::to_string(mut_game).unwrap();
+    match send_notice(http_dispatcher_url, notice_payload).await {
+        true => {
+            log::debug!("send_notice successed");
+            FinishStatus::Accept
+        }
+        false => {
+            FinishStatus::Reject
+        }
+    }
+}
+
+pub async fn handle_player_action(
+    http_dispatcher_url: &str,
     player_name: String,
     player_action: PlayerAction,
-    mut_game: MutexGuard<GameState>,
-) -> Result<MutexGuard<GameState>, &'static str> {
-    //Check GameState.game_result to see if game has already ended
-    let mut mut_game = mut_game;
-
+    mut_game: &mut GameState,
+) -> FinishStatus {
     //#TODO: Prevent player from sending duplicate actions
 
     match mut_game.game_result {
-        GameWinner::None => {
+        GameWinner::None => {   //Game is still going
             if let Some(p) = mut_game.players.get(&player_name) {
                 if let Some(other_player) = mut_game
                     .players
@@ -214,7 +198,8 @@ pub fn handle_player_action(
                                 mut_game.round_result = GameWinner::Player(player_name.clone());
                             }
                             None => {
-                              return Err("Invalid PlayerAction");
+                              log::debug!("Invalid PlayerAction");
+                              return FinishStatus::Reject;
                             }
                         }
 
@@ -229,26 +214,22 @@ pub fn handle_player_action(
                         };
 
                         mut_game.game_result = game_winner;
-
-                        //Update changes back to mut_game
-
-                        mut_game
-                            .players
-                            .insert(mut_other_player.name.clone(), mut_other_player.clone());
                     }
-                    mut_game
-                        .players
-                        .insert(player_name.clone(), mut_player.clone());
 
-                    Ok(mut_game)
+                    save_gamestate_as_notice(http_dispatcher_url, mut_game).await
                 } else {
-                    Err("Invalid player number")
+                    log::debug!("Invalid player number");
+                    FinishStatus::Reject
                 }
             } else {
-                Err("Invalid player")
+                log::debug!("Invalid player");
+                FinishStatus::Reject
             }
         }
-        _ => Err("Game has already ended"),
+        _ => { //Game has already ended
+            log::debug!("Game has already ended");
+            FinishStatus::Reject
+        },
     }
 }
 

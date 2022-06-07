@@ -1,10 +1,9 @@
 extern crate hex;
 use crate::mono::model;
-use actix_web::{error, Error};
-use hyper::{header as HyperHeader, Body, Client, Method, Request};
+use hyper::{header as HyperHeader, Body, Client, Method, Request, Response};
 use model::{FinishStatus, IndexResponse, Notice};
 
-pub async fn send_notice(http_dispatcher_url: &str, payload: String) -> Result<(), Error> {
+pub async fn send_notice(http_dispatcher_url: &str, payload: String) -> bool {
     log::debug!("Call to Http Dispatcher: Adding Notice");
     let client = Client::new();
 
@@ -18,25 +17,45 @@ pub async fn send_notice(http_dispatcher_url: &str, payload: String) -> Result<(
     let notice_json = serde_json::to_string(&notice).unwrap();
     log::debug!("notice_json: {}", notice_json);
 
-    let notice_req = Request::builder()
+    let notice_req = match Request::builder()
         .method(Method::POST)
         .header(HyperHeader::CONTENT_TYPE, "application/json")
         .uri(format!("{}/notice", http_dispatcher_url))
-        .body(Body::from(notice_json))?;
+        .body(Body::from(notice_json)) {
+            Ok(req) => req,
+            Err(e) => {
+                log::debug!("Error occurred while building notice request: {}",e);
+                return false;
+            }
+        };
 
-    let notice_resp = client
+    let notice_resp = match client
         .request(notice_req)
-        .await
-        .map_err(|e| error::ErrorInternalServerError(e))?;
+        .await {
+            Ok(resp) => resp,
+            Err(e) => {
+                log::debug!("Error occurred while sending notice: {}", e);
+                return false;
+            }
+        };
 
     let notice_status = notice_resp.status();
-    let id_response = serde_json::from_slice::<IndexResponse>(
-        &hyper::body::to_bytes(notice_resp)
-            .await
-            .map_err(|e| error::ErrorInternalServerError(e))?
-            .to_vec(),
-    )
-    .map_err(|e| error::ErrorInternalServerError(e))?;
+    let bz = match &hyper::body::to_bytes(notice_resp)
+    .await {
+        Ok(bz) => bz.to_vec(),
+        Err(e) => {
+            log::debug!("Error occurred while decoding /notice resp: {}", e);
+            return false;
+        }
+    };
+
+    let id_response = match serde_json::from_slice::<IndexResponse>(&bz) {
+        Ok(json) => json,
+        Err(e) => {
+            log::debug!("Error occurred while decoding /notice resp: {}", e);
+            return false;
+        }
+    };
 
     log::debug!(
         "Received notice status {} body {:?}",
@@ -44,14 +63,13 @@ pub async fn send_notice(http_dispatcher_url: &str, payload: String) -> Result<(
         &id_response
     );
 
-    Ok(())
+    true
 }
 
 pub async fn send_finish_request(
     http_dispatcher_url: &str,
     status: FinishStatus,
-) -> Result<(), Error> {
-    log::debug!("Call to Http Dispatcher: Finishing");
+) -> Option<Response<Body>> {
     let client = Client::new();
 
     let status_value = status.to_string();
@@ -60,16 +78,26 @@ pub async fn send_finish_request(
     let mut json_status = std::collections::HashMap::new();
     json_status.insert("status", status_value);
 
-    let finish_req = Request::builder()
+    let finish_req = match Request::builder()
         .method(Method::POST)
         .header(HyperHeader::CONTENT_TYPE, "application/json")
         .uri(format!("{}/finish", http_dispatcher_url))
-        .body(Body::from(serde_json::to_string(&json_status).unwrap()))?;
+        .body(Body::from(serde_json::to_string(&json_status).unwrap()))
+        {
+            Ok(req) => req,
+            Err(e) => {
+                log::debug!("Error occurred while building send_finish_request: {}", e);
+                return None;
+            }
+        };
 
-    client
+    match client
         .request(finish_req)
-        .await
-        .map_err(|e| error::ErrorInternalServerError(e))?;
-
-    Ok(())
+        .await {
+            Ok(resp) => Some(resp),
+            Err(e) => {
+                log::debug!("Error occurred while send_finish_request: {}", e);
+                return None;
+            }
+        }
 }

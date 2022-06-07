@@ -52,17 +52,7 @@ pub struct Notice {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AdvanceMetadata {
-    pub msg_sender: String,
-    pub epoch_index: u64,
-    pub input_index: u64,
-    pub block_number: u64,
-    pub time_stamp: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdvanceRequest {
-    pub metadata: AdvanceMetadata,
     /*
         #Note: :
         This is actually the data we passed in through input
@@ -77,16 +67,24 @@ pub struct GameRequest {
     pub player_name: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct AdvanceStateResponse {
-    pub result: String,
-}
-
 #[derive(Debug, Clone, Deserialize, Serialize, StrumDisplay, EnumString)]
 #[strum(serialize_all = "snake_case")]
 pub enum FinishStatus {
     Accept,
     Reject,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, StrumDisplay, EnumString)]
+#[strum(serialize_all = "snake_case")]
+pub enum RequestType {
+    AdvanceState,
+    InspectState,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RollupResponse {
+    pub request_type: String,
+    pub data: AdvanceRequest,
 }
 
 pub const PLAYER_HP: u16 = 1000;

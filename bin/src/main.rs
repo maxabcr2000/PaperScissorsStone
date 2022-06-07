@@ -24,14 +24,14 @@ struct PaperScissorsStone {
     command: Commands,
 }
 
-fn main() -> std::io::Result<()> {
+#[tokio::main]
+async fn main() {
     let opts = PaperScissorsStone::from_args();
 
     match opts.command {
-        Commands::Mono(m_opts) => mono::run(m_opts),
+        Commands::Mono(m_opts) => mono::run(m_opts).await,
         Commands::Version => {
             print_version();
-            Ok(())
         }
     }
 }

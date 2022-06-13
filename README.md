@@ -1,5 +1,5 @@
 # PaperScissorsStone
-Rust Backend for PaperScissorsStone dapp for Cartesi Rollup Framework
+Rust Backend for PaperScissorsStone dapp on Cartesi Rollup Framework
 
 
 ## How to use 

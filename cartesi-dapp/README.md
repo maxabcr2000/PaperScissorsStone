@@ -59,10 +59,10 @@ $ npx hardhat --network localhost paper-scissors-stone:addInput --input "0x7b226
 //For sending the move: paper in your game, send the hexed string of "{"operation":"paper","player_name":"test_player"}"
 $ npx hardhat --network localhost paper-scissors-stone:addInput --input "0x7b226f7065726174696f6e223a227061706572222c22706c617965725f6e616d65223a22746573745f706c61796572227d"
 
-//For sending the move: s in your game, send the hexed string of "{"operation":"scissors","player_name":"test_player"}"
+//For sending the move: scissors in your game, send the hexed string of "{"operation":"scissors","player_name":"test_player"}"
 $ npx hardhat --network localhost paper-scissors-stone:addInput --input "0x7b226f7065726174696f6e223a2273636973736f7273222c22706c617965725f6e616d65223a22746573745f706c61796572227d"
 
-//For sending the move: s in your game, send the hexed string of "{"operation":"stone","player_name":"test_player"}"
+//For sending the move: stone in your game, send the hexed string of "{"operation":"stone","player_name":"test_player"}"
 $ npx hardhat --network localhost paper-scissors-stone:addInput --input "0x7b226f7065726174696f6e223a2273746f6e65222c22706c617965725f6e616d65223a22746573745f706c61796572227d" 
 ```
 

@@ -1,21 +1,12 @@
 # paper-scissors-stone DApp
 
-paper-scissors-stone is a customized DApp written in Python, which originally resembles the one provided by the sample [Echo DApp](https://github.com/cartesi/rollups-examples/tree/main/echo).
-
-The documentation below is simply a copy of the one provided there and should be used to both run the original paper-scissors-stone code and as a basis for the documentation of any DApp created based on this paper-scissors-stone.
+paper-scissors-stone is a customized DApp written in Rust, which originally resembles the one provided by the sample [Echo DApp](https://github.com/cartesi/rollups-examples/tree/main/echo).
 
 ## Building the environment
 
-To run the paper-scissors-stone example, clone the repository as follows:
+To build the back-end for the paper-scissors-stone example:
 
 ```shell
-$ git clone https://github.com/cartesi/rollups-examples.git
-```
-
-Then, build the back-end for the paper-scissors-stone example:
-
-```shell
-$ cd rollups-examples/paper-scissors-stone
 $ make machine
 ```
 
@@ -24,7 +15,7 @@ $ make machine
 In order to start the containers in production mode, simply run:
 
 ```shell
-$ docker-compose up --build
+$ make prod-mode
 ```
 
 _Note:_ If you decide to use [Docker Compose V2](https://docs.docker.com/compose/cli-command/), make sure you set the [compatibility flag](https://docs.docker.com/compose/cli-command-compatibility/) when executing the command (e.g., `docker compose --compatibility up`).
@@ -45,24 +36,34 @@ To stop the containers, first end the process with `Ctrl + C`.
 Then, remove the containers and associated volumes by executing:
 
 ```shell
-$ docker-compose down -v
+$ make shutdown
 ```
 
 ## Interacting with the application
 
 With the infrastructure in place, you can interact with the application using a set of Hardhat tasks.
 
-First, go to a separate terminal window, switch to the `paper-scissors-stone/contracts` directory, and run `yarn`:
+First, go to a separate terminal window, switch to the `PaperScissorsStone/cartesi-dapp/contracts` directory, and run `yarn`:
 
 ```shell
-$ cd paper-scissors-stone/contracts/
+$ cd cartesi-dapp/contracts/
 $ yarn
 ```
 
 Then, send an input as follows:
 
 ```shell
-$ npx hardhat --network localhost paper-scissors-stone:addInput --input "0x63617274657369"
+//For attending the game room, send the hexed string of "{"operation":"find_game","player_name":"test_player"}"
+$ npx hardhat --network localhost paper-scissors-stone:addInput --input "0x7b226f7065726174696f6e223a2266696e645f67616d65222c22706c617965725f6e616d65223a22746573745f706c61796572227d"
+
+//For sending the move: paper in your game, send the hexed string of "{"operation":"paper","player_name":"test_player"}"
+$ npx hardhat --network localhost paper-scissors-stone:addInput --input "0x7b226f7065726174696f6e223a227061706572222c22706c617965725f6e616d65223a22746573745f706c61796572227d"
+
+//For sending the move: s in your game, send the hexed string of "{"operation":"scissors","player_name":"test_player"}"
+$ npx hardhat --network localhost paper-scissors-stone:addInput --input "0x7b226f7065726174696f6e223a2273636973736f7273222c22706c617965725f6e616d65223a22746573745f706c61796572227d"
+
+//For sending the move: s in your game, send the hexed string of "{"operation":"stone","player_name":"test_player"}"
+$ npx hardhat --network localhost paper-scissors-stone:addInput --input "0x7b226f7065726174696f6e223a2273746f6e65222c22706c617965725f6e616d65223a22746573745f706c61796572227d" 
 ```
 
 The input will have been accepted when you receive a response similar to the following one:
@@ -80,18 +81,14 @@ $ npx hardhat --network localhost paper-scissors-stone:getNotices --epoch 0
 The response should be something like this:
 
 ```shell
+//#TODO
 {"session_id":"default_rollups_id","epoch_index":"0","input_index":"0","notice_index":"0","payload":"63617274657369"}
-```
-
-You can also send inputs as regular strings. For example:
-
-```shell
-$ npx hardhat --network localhost paper-scissors-stone:addInput --input 'Hello there!'
 ```
 
 To retrieve notices interpreting the payload as a UTF-8 string, you can use the `--payload string` option:
 
 ```shell
+//#TODO
 $ npx hardhat --network localhost paper-scissors-stone:getNotices --epoch 0 --payload string
 {"session_id":"default_rollups_id","epoch_index":"0","input_index":"1","notice_index":"0","payload":"Hello there!"}
 ```
@@ -117,35 +114,25 @@ When developing an application, it is often important to easily test and debug i
 The first step is to run the environment in host mode using the following command:
 
 ```shell
-$ docker-compose -f docker-compose.yml -f docker-compose-host.yml up --build
+$ make host-mode
 ```
 
-The next step is to run the paper-scissors-stone server in your machine. The application is written in Python, so you need to have `python3` installed.
+The next step is to run the paper-scissors-stone server in your machine. The application is written in Rust, so you need to have `rustup` installed.
 
 In order to start the paper-scissors-stone server, run the following commands in a dedicated terminal:
 
 ```shell
-$ cd paper-scissors-stone/server/
-$ python3 -m venv .env
-$ . .env/bin/activate
-$ pip install -r requirements.txt
-$ ROLLUP_HTTP_SERVER_URL="http://127.0.0.1:5004" python3 paper-scissors-stone.py
+$ cd ../
+$ ROLLUP_HTTP_SERVER_URL="http://127.0.0.1:5004" cargo run mono
 ```
 
 This will run the paper-scissors-stone server and send the corresponding notices to port `5004`.
 
-The final command, which effectively starts the server, can also be configured in an IDE to allow interactive debugging using features like breakpoints.
-You can also use a tool like [entr](https://eradman.com/entrproject/) to restart it automatically when the code changes. For example:
-
-```shell
-$ ls *.py | ROLLUP_HTTP_SERVER_URL="http://127.0.0.1:5004" entr -r python3 paper-scissors-stone.py
-```
-
 After the server successfully starts, it should print an output like the following:
 
 ```
-INFO:__main__:HTTP rollup_server url is http://127.0.0.1:5004
-INFO:__main__:Sending finish
+HTTP rollup_server url is http://127.0.0.1:5004
+Sending finish
 ```
 
 After that, you can interact with the application normally [as explained above](#interacting-with-the-application).
@@ -153,6 +140,7 @@ After that, you can interact with the application normally [as explained above](
 When you add an input, you should see it being processed by the paper-scissors-stone server as follows:
 
 ```shell
+//#TODO
 INFO:__main__:Received finish status 200
 INFO:__main__:Received advance request data {'metadata': {'msg_sender': '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266', 'epoch_index': 0, 'input_index': 0, 'block_number': 0, 'timestamp': 0}, 'payload': '0x63617274657369'}
 INFO:__main__:Adding notice
@@ -163,5 +151,5 @@ INFO:__main__:Sending finish
 Finally, to stop the containers, removing any associated volumes, execute:
 
 ```shell
-$ docker-compose -f docker-compose.yml -f docker-compose-host.yml down -v
+$ make shutdown
 ```

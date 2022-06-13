@@ -24,3 +24,12 @@ console:
 clean:
 	@make -C server clean
 	@rm -rf $(MACHINE_DIR)
+
+prod-mode:
+	docker-compose up --build
+
+host-mode:
+	docker-compose -f docker-compose.yml -f docker-compose-host.yml up --build
+
+shutdown:
+	docker-compose down -v

@@ -12,6 +12,8 @@ use hyper::StatusCode;
 pub async fn rollup(
     http_dispatcher_url: &str
 ) {
+    log::debug!("HTTP rollup_server url is {}", http_dispatcher_url);
+    
     let mut game =  GameState {
         round: 1,
         players: HashMap::<String, Player>::new(),
@@ -22,6 +24,8 @@ pub async fn rollup(
     let mut finish_status = FinishStatus::Accept;
     
     loop {
+        log::debug!("Sending finish");
+        
         let resp = match send_finish_request(http_dispatcher_url, finish_status.clone()).await {
             Some(resp) => resp,
             None => {
